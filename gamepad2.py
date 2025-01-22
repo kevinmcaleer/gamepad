@@ -9,15 +9,28 @@ class Button:
     def __init__(self, pin: int, debounce_ms: int = 50):
         self.pin = machine.Pin(pin, machine.Pin.IN, machine.Pin.PULL_UP)
         self.debounce_ms = debounce_ms
-        self._last_pressed = 0
+        self._last_pressed = ticks_ms()
+        self._was_pressed = False
 
     async def is_pressed(self) -> bool:
         current_time = ticks_ms()
-        if self.pin.value() == 0:  # Button pressed
+        if self.pin.value() == 0:  # Button is pressed
             if ticks_diff(current_time, self._last_pressed) > self.debounce_ms:
                 self._last_pressed = current_time
                 return True
         return False
+
+    async def state_changed(self) -> tuple[bool, bool]:
+        """Check for button press/release events."""
+        is_pressed = self.pin.value() == 0
+        if is_pressed and not self._was_pressed:  # Button down
+            self._was_pressed = True
+            return True, False
+        elif not is_pressed and self._was_pressed:  # Button up
+            self._was_pressed = False
+            return False, True
+        return False, False
+
 
 class GamePad():
     def __init__(self):
@@ -65,12 +78,19 @@ class GamePad():
         """ Continuously check button states asynchronously """
         while True:
             for name, button in self.buttons.items():
-                if await button.is_pressed():
-                    print(f"Button {name} pressed")
+                button_down, button_up = await button.state_changed()
+                if button_down:
+                    print(f"Button {name} pressed down")
                     if self.connection:
-                        self.button_characteristic.write(name.encode())
-                        self.button_characteristic.notify(self.connection, name.encode())
+                        self.button_characteristic.write(f"{name}_down".encode())
+                        self.button_characteristic.notify(self.connection, f"{name}_down".encode())
+                elif button_up:
+                    print(f"Button {name} released")
+                    if self.connection:
+                        self.button_characteristic.write(f"{name}_up".encode())
+                        self.button_characteristic.notify(self.connection, f"{name}_up".encode())
             await asyncio.sleep_ms(10)
+
 
     async def peripheral_task(self):
         """ Handle BLE advertising and connections """
