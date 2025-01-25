@@ -1,112 +1,141 @@
-# Server Test
-import sys
-
-import aioble
-import bluetooth
 import machine
-import uasyncio as asyncio
-from micropython import const
+import asyncio
 
-def uid():
-    """ Return the unique id of the device as a string """
-    return "{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}".format(
-        *machine.unique_id())
+class GamePadServer:
+    """ A class to handle BLE communication and interpret commands from a Bluetooth gamepad remote.
 
-MANUFACTURER_ID = const(0x02A29)
-MODEL_NUMBER_ID = const(0x2A24)
-SERIAL_NUMBER_ID = const(0x2A25)
-HARDWARE_REVISION_ID = const(0x2A26)
-BLE_VERSION_ID = const(0x2A28)
+    Attributes:
+        device_name (str): The name of the BLE device.
+        led (Pin): Onboard LED for connection status indication.
+        connected (bool): Tracks the connection status.
+        connection (aioble.Connection): Active BLE connection.
+        command (str): The last received command from the gamepad.
+    """
 
-data = "Hello"
+    def __init__(self, device_name="KevsRobots"):
+        """
+        Initializes the BLE server with the specified device name.
 
-led = machine.Pin("LED", machine.Pin.OUT)
+        Args:
+            device_name (str): The name of the BLE device to advertise.
+        """
+        import aioble
+        import bluetooth
+        from micropython import const
 
-_ENV_SENSE_UUID = bluetooth.UUID(0x180A)
-_GENERIC = bluetooth.UUID(0x1848)
-_ENV_SENSE_TEMP_UUID = bluetooth.UUID(0x1800)
-_BUTTON_UUID = bluetooth.UUID(0x2A6E)
+        self.device_name = device_name
+        self.led = machine.Pin("LED", machine.Pin.OUT)
+        self.connected = False
+        self.connection = None
+        self.command = None
 
-_BLE_APPEARANCE_GENERIC_REMOTE_CONTROL = const(384)
+        # UUIDs and constants
+        self._GENERIC = bluetooth.UUID(0x1848)
+        self._BUTTON_UUID = bluetooth.UUID(0x2A6E)
+        self._BLE_APPEARANCE_GENERIC_REMOTE_CONTROL = const(384)
 
-# Advertising frequency
-ADV_INTERVAL_MS = 250_000
+        # Services and Characteristics
+        self.remote_service = aioble.Service(self._GENERIC)
+        self.button_characteristic = aioble.Characteristic(
+            self.remote_service, self._BUTTON_UUID, read=True, notify=True
+        )
 
-device_info = aioble.Service(_ENV_SENSE_UUID)
+        # Register the services
+        aioble.register_services(self.remote_service)
 
-connection = None
+    async def advertise(self):
+        """
+        Advertises the BLE service and waits for connections.
+        """
+        import aioble
 
-# Create characteristics for device info
-aioble.Characteristic(device_info, bluetooth.UUID(MANUFACTURER_ID), read=True, initial="KevsRobotsRemote")
-aioble.Characteristic(device_info, bluetooth.UUID(MODEL_NUMBER_ID), read=True, initial="1.0")
-aioble.Characteristic(device_info, bluetooth.UUID(SERIAL_NUMBER_ID), read=True, initial=uid())
-aioble.Characteristic(device_info, bluetooth.UUID(HARDWARE_REVISION_ID), read=True, initial=sys.version)
-aioble.Characteristic(device_info, bluetooth.UUID(BLE_VERSION_ID), read=True, initial="1.0")
+        while True:
+            self.connected = False
+            async with await aioble.advertise(
+                250_000,  # Advertisement interval
+                name=self.device_name,
+                appearance=self._BLE_APPEARANCE_GENERIC_REMOTE_CONTROL,
+                services=[self._GENERIC],
+            ) as self.connection:
+                print("Connection from", self.connection.device)
+                self.connected = True
+                await self.connection.disconnected()
+                print("Disconnected")
 
-remote_service = aioble.Service(_GENERIC)
+    async def read_commands(self):
+        """
+        Continuously reads commands from the gamepad and stores the latest command.
+        """
+        while True:
+            if self.connected:
+                # Read and decode the command from the characteristic
+                command = self.button_characteristic.read()
+                if command:
+                    self.command = command.decode("utf-8").strip().lower()
+                    print(f"Received command: {self.command}")
 
-button_characteristic = aioble.Characteristic(
-    remote_service, _BUTTON_UUID, read=True, notify=True
-)
+            await asyncio.sleep_ms(100)
 
-print('registering services')
-aioble.register_services(remote_service, device_info)
+    @property
+    def is_up(self):
+        """Returns True if the "up" command is received."""
+        return self.command == "up"
 
-connected = False
+    @property
+    def is_down(self):
+        """Returns True if the "down" command is received."""
+        return self.command == "down"
 
-async def remote_task():
-    """ Send the event to the connected device """
+    @property
+    def is_left(self):
+        """Returns True if the "left" command is received."""
+        return self.command == "left"
 
-    while True:
-        if not connected:
-            print('not connected')
-            await asyncio.sleep_ms(1000)
-            continue
-        
-        button_characteristic.write(b"hello world")
-#         button_characteristic.notify(connection,b"x")
-        
-        await asyncio.sleep_ms(10)
-            
-# Serially wait for connections. Don't advertise while a central is
-# connected.    
-async def peripheral_task():
-    print('peripheral task started')
-    global connected, connection
-    while True:
-        connected = False
-        async with await aioble.advertise(
-            ADV_INTERVAL_MS, 
-            name="KevsRobots", 
-            appearance=_BLE_APPEARANCE_GENERIC_REMOTE_CONTROL, 
-            services=[_ENV_SENSE_TEMP_UUID]
-        ) as connection:
-            print("Connection from", connection.device)
-            connected = True
-            print(f"connected: {connected}")
-            await connection.disconnected()
-            print(f'disconnected')
-        
+    @property
+    def is_right(self):
+        """Returns True if the "right" command is received."""
+        return self.command == "right"
 
-async def blink_task():
-    print('blink task started')
-    toggle = True
-    while True:
-        led.value(toggle)
-        toggle = not toggle
-        blink = 1000
-        if connected:
-            blink = 1000
-        else:
-            blink = 250
-        await asyncio.sleep_ms(blink)
-        
-async def main():
-    tasks = [
-        asyncio.create_task(peripheral_task()),
-        asyncio.create_task(blink_task()),
-        asyncio.create_task(remote_task()),
-    ]
-    await asyncio.gather(*tasks)
+    @property
+    def none(self):
+        """Returns True if no command is currently received."""
+        return self.command is None
 
-asyncio.run(main())
+    async def blink_status(self):
+        """
+        Blinks the onboard LED to indicate connection status.
+        """
+        toggle = True
+        while True:
+            self.led.value(toggle)
+            toggle = not toggle
+            await asyncio.sleep_ms(1000 if self.connected else 250)
+
+    async def main(self):
+        """
+        Runs the main tasks for the GamePadServer.
+        """
+        tasks = [
+            asyncio.create_task(self.advertise()),
+            asyncio.create_task(self.blink_status()),
+            asyncio.create_task(self.read_commands()),
+        ]
+        await asyncio.gather(*tasks)
+
+# Example usage:
+# robot = Burgerbot()
+# gamepad = GamePadServer()
+# asyncio.run(gamepad.main())
+#
+# while True:
+#     if gamepad.is_up:
+#         robot.forward()
+#     elif gamepad.is_down:
+#         robot.backward()
+#     elif gamepad.is_left:
+#         robot.turn_left()
+#     elif gamepad.is_right:
+#         robot.turn_right()
+#     elif gamepad.none:
+#         robot.stop()
+

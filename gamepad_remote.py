@@ -4,6 +4,8 @@ import asyncio
 from micropython import const
 import bluetooth
 from time import ticks_ms, ticks_diff
+from ssd1306 import SSD1306_I2C
+from machine import I2C
 
 class Button:
     def __init__(self, pin: int, debounce_ms: int = 50):
@@ -71,6 +73,14 @@ class GamePad():
 
         self.device_info = aioble.Service(self._ENV_SENSE_UUID)
 
+        # Setup OLED
+        id = 0
+        sda = 0
+        scl = 1
+        i2c = I2C(sda=sda,scl=scl, id=id)
+        self.oled = SSD1306_I2C(128,64,i2c)
+        self.oled.text("GamePad", 0, 0)
+        self.oled.show()
 
         print('GamePad initialized')
 
@@ -81,11 +91,17 @@ class GamePad():
                 button_down, button_up = await button.state_changed()
                 if button_down:
                     print(f"Button {name} pressed down")
+                    self.oled.clear()
+                    self.oled.text(f"{name} down",0,0)
+                    self.oled.show()
                     if self.connection:
                         self.button_characteristic.write(f"{name}_down".encode())
                         self.button_characteristic.notify(self.connection, f"{name}_down".encode())
                 elif button_up:
                     print(f"Button {name} released")
+                    self.oled.clear()
+                    self.oled.text(f"{name} up",0,0)
+                    self.oled.show()
                     if self.connection:
                         self.button_characteristic.write(f"{name}_up".encode())
                         self.button_characteristic.notify(self.connection, f"{name}_up".encode())
