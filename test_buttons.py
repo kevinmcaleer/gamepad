@@ -2,13 +2,24 @@
 # 22 January 2025
 # Button Test
 
-from gamepad2 import GamePad
-from time import sleep
+import asyncio
+from gamepad_remote import GamePad
 
-gamepad = GamePad()
+async def test_gamepad():
+    gamepad = GamePad()
+    print("Starting gamepad")
+    await asyncio.gather(
+        gamepad.main(),  # Run the gamepad's main tasks
+        monitor_start_button(gamepad)  # Monitor for the start button press
+    )
 
-print('starting gamepad')
-gamepad.begin()
+async def monitor_start_button(gamepad):
+    """Exit the program when the start button is pressed."""
+    while True:
+        if await gamepad.buttons["Start"].is_pressed():  # Await the asynchronous method
+            print("Start button pressed. Exiting...")
+            break
+        await asyncio.sleep(0.1)  # Avoid busy-waiting
 
-while True:
-    pass
+if __name__ == "__main__":
+    asyncio.run(test_gamepad())
