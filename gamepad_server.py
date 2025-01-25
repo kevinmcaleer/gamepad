@@ -68,12 +68,15 @@ class GamePadServer:
         """
         while True:
             if self.connected:
-                # Read and decode the command from the characteristic
-                command = self.button_characteristic.read()
-                if command:
-                    self.command = command.decode("utf-8").strip().lower()
-                    print(f"Received command: {self.command}")
-
+                try:
+                    # Read and decode the command from the characteristic
+                    command = self.button_characteristic.read()
+                    if command:
+                        self.command = command.decode("utf-8").strip().lower()
+                        print(f"Received command: {self.command}")
+                except Exception as e:
+                    print("Error reading command:", e)
+                    
             await asyncio.sleep_ms(100)
 
     @property

@@ -12,6 +12,7 @@ import uasyncio as asyncio
 # Bluetooth UUIDS can be found online at https://www.bluetooth.com/specifications/gatt/services/
 
 _REMOTE_UUID = bluetooth.UUID(0x1848)
+# _REMOTE_UUID = bluetooth.UUID(0x180A)
 _ENV_SENSE_UUID = bluetooth.UUID(0x1800) 
 _REMOTE_CHARACTERISTICS_UUID = bluetooth.UUID(0x2A6E)
 
@@ -71,6 +72,7 @@ async def peripheral_task():
         try:
             # Discover the robot service
             robot_service = await connection.service(_REMOTE_UUID)
+            print(f'robot_service is: {robot_service}')
             if not robot_service:
                 print("Robot service not found")
                 return
