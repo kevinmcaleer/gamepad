@@ -238,32 +238,43 @@ class GamePadServer:
 
     async def read_commands(self):
         print("Reading commands...")
+        service = None
+        characteristic = None
+
         while True:
             if self.connected:
-                print('read_commands - connected')
                 try:
-                    service = await self.connection.service(self._REMOTE_UUID)
-                    if service:
-                        print('service found')
+                    # Discover service and characteristic once per connection
+                    if not service or not characteristic:
+                        service = await self.connection.service(self._REMOTE_UUID)
+                        if not service:
+                            print("Target service not found.")
+                            continue
                         characteristic = await service.characteristic(self._BUTTON_UUID)
-                        if characteristic:
-                            try:
-                                print('characteristic found')
-                                value = await characteristic.read()
-                                if value:
-                                    self.command = value.decode("utf-8").strip().lower()
-                                    print(f"Received command: {self.command}")
-                            except Exception as e:
-                                print(f"Error reading characteristic: {e}")
-                                self.connected = False
-                        else:
+                        if not characteristic:
                             print("Target characteristic not found.")
-                    else:
-                        print("Target service not found.")
+                            continue
+
+                    # Read the value of the characteristic
+                    try:
+                        value = await characteristic.read()
+                        if value:
+                            self.command = value.decode("utf-8").strip().lower()
+#                             print(f"Received command: {self.command}")
+                            asyncio.sleep(0.01)
+                    except Exception as e:
+                        print(f"Error reading characteristic: {e}")
+                        self.connected = False
+                        service = None  # Reset for next connection
+                        characteristic = None
                 except Exception as e:
-                    print(f"Error in read_commands: {e}")
+                    print(f"Error during BLE operations: {e}")
                     self.connected = False
-            await asyncio.sleep(100)  # Avoid aggressive polling
+                    service = None  # Reset for next connection
+                    characteristic = None
+            else:
+                await asyncio.sleep(100)  # Wait before retrying
+
 
             
     @property
