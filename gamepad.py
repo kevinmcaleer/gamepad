@@ -197,31 +197,29 @@ class GamePadServer:
         aioble.register_services(self.remote_service)
         
     async def peripheral_task(self):
+        print("Peripheral task started")
         while True:
-            print("Starting peripheral task...")
             device = await self.find_remote()
             if not device:
-                print("GamePad remote not found. Retrying...")
-                await asyncio.sleep(0.5)
-                return
-            
+                print("Remote not found, retrying...")
+                continue
+
             try:
-                print(f"Attempting to connect to {device}...")
+                print(f"Connecting to {device}...")
                 self.connection = await device.connect()
                 self.connected = True
                 print(f"Connected to {self.connection.device}")
+
+                # Keep connection active until disconnected
                 async with self.connection:
                     await self.connection.disconnected()
-                    print("Disconnected from GamePad.")
-                    self.connected = False
-            except asyncio.TimeoutError:
-                print("Connection attempt timed out.")
-                
+                    print("Disconnected from remote.")
             except Exception as e:
                 print(f"Error during connection: {e}")
             finally:
                 self.connected = False
-                await asyncio.sleep(100)  # Avoid aggressive retries
+                await asyncio.sleep(2)  # Avoid aggressive reconnection retries
+
         
     async def blink_task(self):
         print('blink task started')
@@ -237,46 +235,32 @@ class GamePadServer:
             await asyncio.sleep_ms(blink)
 
     async def read_commands(self):
-        print("Reading commands...")
+        print("Waiting for notifications...")
         service = None
         characteristic = None
 
         while True:
             if self.connected:
                 try:
-                    # Discover service and characteristic once per connection
+                    # Discover service and characteristic once
                     if not service or not characteristic:
                         service = await self.connection.service(self._REMOTE_UUID)
-                        if not service:
-                            print("Target service not found.")
-                            continue
                         characteristic = await service.characteristic(self._BUTTON_UUID)
-                        if not characteristic:
-                            print("Target characteristic not found.")
-                            continue
 
-                    # Read the value of the characteristic
-                    try:
+                    # Wait for notifications
+                    while self.connected:
                         value = await characteristic.read()
                         if value:
                             self.command = value.decode("utf-8").strip().lower()
 #                             print(f"Received command: {self.command}")
-                            asyncio.sleep(0.01)
-                    except Exception as e:
-                        print(f"Error reading characteristic: {e}")
-                        self.connected = False
-                        service = None  # Reset for next connection
-                        characteristic = None
                 except Exception as e:
-                    print(f"Error during BLE operations: {e}")
+                    print(f"Error during notification handling: {e}")
                     self.connected = False
-                    service = None  # Reset for next connection
+                    service = None
                     characteristic = None
             else:
-                await asyncio.sleep(100)  # Wait before retrying
+                await asyncio.sleep(1)
 
-
-            
     @property
     def is_up(self):
         return self.command == "up_down"
@@ -294,20 +278,16 @@ class GamePadServer:
         return self.command == "right_down"
             
     async def find_remote(self):
+        print("Scanning for BLE devices...")
         while True:
-            print("Scanning for BLE devices...")
             async with aioble.scan(5000, interval_us=30000, window_us=30000, active=True) as scanner:
                 async for result in scanner:
-                    if result.name() == "KevsRobots":
-                        print("Found KevsRobots")
-                        for item in result.services():
-                            print(item)
-                        if self._REMOTE_UUID in result.services():
-                            print("Found Robot Remote Service")
-                            return result.device
-            print("No matching device found.")
-            return None
-            asyncio.sleep(0.5)
+                    if result.name() == self.device_name:
+                        print(f"Found {self.device_name}")
+                        return result.device  # Return the device for direct connection
+            print("Device not found. Retrying in 2 seconds...")
+            await asyncio.sleep(2)
+
     
     async def main(self):
         while True:
