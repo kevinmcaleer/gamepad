@@ -19,7 +19,8 @@ async def monitor_gamepad(gamepad):
         else:
             pass
         await asyncio.sleep(0.25)  # Avoid tight looping
-        print(f'command: {gamepad.command}')
+        if gamepad.command is not None:
+            print(f'command: {gamepad.command}')
 
 async def main():
     """
@@ -33,26 +34,24 @@ async def main():
     #   - peripheral_task()
     # So we do NOT call them again here.
     
+    
     blink = asyncio.create_task(gamepad.blink_task())
     monitor = asyncio.create_task(monitor_gamepad(gamepad))
-    
+#     p_task = asyncio.create_task(gamepad.peripheral_task())
+#     gamepad.tasks.append(p_task)
     gamepad.tasks.append(monitor)
     gamepad.tasks.append(blink)
     await gamepad.main()
     
-#     read_commands = asyncio.create_task(gamepad.read_commands())
-#     find_remote = asyncio.create_task(gamepad.find_remote())
-#     peripheral_task = asyncio.create_task(gamepad.peripheral_task())
-#     gamepad.tasks.append(read_commands)
-#     gamepad.tasks.append(find_remote)
-#     gamepad.tasks.append(peripheral_task)
-    
-    print (f'gamepad tasks {gamepad.tasks}')
+#     print (f'gamepad tasks {gamepad.tasks}')
     # Run both tasks concurrently
-    await asyncio.gather(*gamepad.tasks)
+#     await asyncio.gather(*gamepad.tasks)
 
 # Run the main coroutine
-try:
-    asyncio.run(main())
-except KeyboardInterrupt:
-    print("Exiting...")
+while True:
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Exiting...")
+        import sys
+        sys.exit()

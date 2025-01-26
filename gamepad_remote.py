@@ -205,9 +205,9 @@ class GamePadServer:
 
         # Register the services
         aioble.register_services(self.remote_service)
-    
         
     async def peripheral_task(self):
+       
         print("Starting peripheral task...")
         device = await self.find_remote()
         if not device:
@@ -216,7 +216,7 @@ class GamePadServer:
         
         try:
             print(f"Attempting to connect to {device}...")
-            connection = await device.connect()
+            self.connection = await device.connect()
         except asyncio.TimeoutError:
             print("Connection attempt timed out.")
             return
@@ -224,12 +224,12 @@ class GamePadServer:
             print(f"Error during connection: {e}")
             return
         
-        async with connection:
-            print(f"Connected to {connection.device}")
+        async with self.connection:
+            print(f"Connected to {self.connection.device}")
             self.connected = True
-            await connection.disconnected()
+            await self.connection.disconnected()
             print("Disconnected from GamePad.")
-
+            self.connected = False
     
     async def blink_task(self):
         print('blink task started')
@@ -246,21 +246,40 @@ class GamePadServer:
 
     async def read_commands(self):
         """
-        Continuously reads commands from the gamepad and stores the latest command.
+        Continuously poll the button characteristic for updates.
         """
+        print('reading commands')
+        
         while True:
             if self.connected:
-                try:
-                    # Read and decode the command from the characteristic
-                    command = await self.button_characteristic.read()
-#                     command = await self.button_characteristic.notified()
-#                     print(f'command is: {command}')
-                    if command:
-                        self.command = command.decode("utf-8").strip().lower()
-                        print(f"Received command: {self.command}")
-                except Exception as e:
-                    print(f"Error reading command: {e}")
+                async with self.connection:
+                    service = await self.connection.service(self._REMOTE_UUID)
+                    if service:
+                        print(f"Service found: {service.uuid}")
 
+                        # Discover the target characteristic by UUID
+                        characteristic = await service.characteristic(self._BUTTON_UUID)
+                        if characteristic:
+                            print(f"Characteristic found: {characteristic.uuid}")
+
+                            # Read the value of the characteristic
+                            try:
+                                value = await characteristic.read()
+                                print("Characteristic value:", value.decode('utf-8'))
+                            except Exception as e:
+                                print("Error reading characteristic:", e)
+                        else:
+                            print("Target characteristic not found.")
+                    else:
+                        print("Target service not found.")
+                # Poll the characteristic for updates
+                command = value  # Non-blocking read
+                if command:
+                    self.command = command.decode("utf-8").strip().lower()
+                    print(f"Received command: {self.command}")
+                    await asyncio.sleep_ms(100)
+            
+            # Add a small delay to avoid overwhelming the connection
             await asyncio.sleep_ms(100)
             
     @property
@@ -280,6 +299,7 @@ class GamePadServer:
         return self.command == "right_down"
             
     async def find_remote(self):
+      
         print("Scanning for BLE devices...")
         async with aioble.scan(5000, interval_us=30000, window_us=30000, active=True) as scanner:
             async for result in scanner:
@@ -299,8 +319,8 @@ class GamePadServer:
         print('starting tasks')
         read_commands_task = asyncio.create_task(self.read_commands())
         peripheral_task = asyncio.create_task(self.peripheral_task())
-        self.tasks.append(read_commands_task)
+        
         self.tasks.append(peripheral_task)
-
+        self.tasks.append(read_commands_task)
         await asyncio.gather(*self.tasks)
 
