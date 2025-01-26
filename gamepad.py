@@ -33,17 +33,6 @@ class Button:
             return False, True
         return False, False
 
-
-import machine
-import aioble
-import asyncio
-from micropython import const
-import bluetooth
-from time import ticks_ms, ticks_diff
-from ssd1306 import SSD1306_I2C
-from machine import I2C
-
-
 class GamePad:
     def __init__(self):
         self.buttons = {
@@ -100,7 +89,7 @@ class GamePad:
                     print(f"Button {name} pressed down")
                     self.oled.fill(0)
                     self.oled.text(f"{name} down", 0, 0)                 
-                    self.oled.text(f"connected: {connected_text}",0,40)
+                    self.oled.text(f"{connected_text}",0,40)
                     self.oled.show()
                     if self.connected:
                         # Send button press notification
@@ -110,7 +99,7 @@ class GamePad:
                     print(f"Button {name} released")
                     self.oled.fill(0)
                     self.oled.text(f"{name} up", 0, 0)
-                    self.oled.text(f"connected: {connected_text}",0,40)
+                    self.oled.text(f"{connected_text}",0,40)
                     self.oled.show()
                     if self.connected:
                         # Send button release notification
@@ -129,10 +118,11 @@ class GamePad:
                 services=[self._GENERIC_UUID],
             ) as self.connection:
                 self.oled.clear()
-                self.oled.text(f"connected: {self.connection.device}",0,40)
+                self.oled.text(f"Connected.",0,40)
                 self.oled.show()
                 print("Connection from", self.connection.device)
                 self.connected = True
+                
                 await self.connection.disconnected()
                 self.oled.clear()
                 self.oled.text(f"Disconnected.",0,40)
@@ -207,30 +197,32 @@ class GamePadServer:
         aioble.register_services(self.remote_service)
         
     async def peripheral_task(self):
-       
-        print("Starting peripheral task...")
-        device = await self.find_remote()
-        if not device:
-            print("GamePad remote not found. Retrying...")
-            return
+        while True:
+            print("Starting peripheral task...")
+            device = await self.find_remote()
+            if not device:
+                print("GamePad remote not found. Retrying...")
+                await asyncio.sleep(0.5)
+                return
+            
+            try:
+                print(f"Attempting to connect to {device}...")
+                self.connection = await device.connect()
+                self.connected = True
+                print(f"Connected to {self.connection.device}")
+                async with self.connection:
+                    await self.connection.disconnected()
+                    print("Disconnected from GamePad.")
+                    self.connected = False
+            except asyncio.TimeoutError:
+                print("Connection attempt timed out.")
+                
+            except Exception as e:
+                print(f"Error during connection: {e}")
+            finally:
+                self.connected = False
+                await asyncio.sleep(100)  # Avoid aggressive retries
         
-        try:
-            print(f"Attempting to connect to {device}...")
-            self.connection = await device.connect()
-        except asyncio.TimeoutError:
-            print("Connection attempt timed out.")
-            return
-        except Exception as e:
-            print(f"Error during connection: {e}")
-            return
-        
-        async with self.connection:
-            print(f"Connected to {self.connection.device}")
-            self.connected = True
-            await self.connection.disconnected()
-            print("Disconnected from GamePad.")
-            self.connected = False
-    
     async def blink_task(self):
         print('blink task started')
         toggle = True
@@ -245,42 +237,34 @@ class GamePadServer:
             await asyncio.sleep_ms(blink)
 
     async def read_commands(self):
-        """
-        Continuously poll the button characteristic for updates.
-        """
-        print('reading commands')
-        
+        print("Reading commands...")
         while True:
             if self.connected:
-                async with self.connection:
+                print('read_commands - connected')
+                try:
                     service = await self.connection.service(self._REMOTE_UUID)
                     if service:
-                        print(f"Service found: {service.uuid}")
-
-                        # Discover the target characteristic by UUID
+                        print('service found')
                         characteristic = await service.characteristic(self._BUTTON_UUID)
                         if characteristic:
-                            print(f"Characteristic found: {characteristic.uuid}")
-
-                            # Read the value of the characteristic
                             try:
+                                print('characteristic found')
                                 value = await characteristic.read()
-                                print("Characteristic value:", value.decode('utf-8'))
+                                if value:
+                                    self.command = value.decode("utf-8").strip().lower()
+                                    print(f"Received command: {self.command}")
                             except Exception as e:
-                                print("Error reading characteristic:", e)
+                                print(f"Error reading characteristic: {e}")
+                                self.connected = False
                         else:
                             print("Target characteristic not found.")
                     else:
                         print("Target service not found.")
-                # Poll the characteristic for updates
-                command = value  # Non-blocking read
-                if command:
-                    self.command = command.decode("utf-8").strip().lower()
-                    print(f"Received command: {self.command}")
-                    await asyncio.sleep_ms(100)
-            
-            # Add a small delay to avoid overwhelming the connection
-            await asyncio.sleep_ms(100)
+                except Exception as e:
+                    print(f"Error in read_commands: {e}")
+                    self.connected = False
+            await asyncio.sleep(100)  # Avoid aggressive polling
+
             
     @property
     def is_up(self):
@@ -299,28 +283,35 @@ class GamePadServer:
         return self.command == "right_down"
             
     async def find_remote(self):
-      
-        print("Scanning for BLE devices...")
-        async with aioble.scan(5000, interval_us=30000, window_us=30000, active=True) as scanner:
-            async for result in scanner:
-                if result.name() == "KevsRobots":
-                    print("Found KevsRobots")
-                    for item in result.services():
-                        print(item)
-                    if self._REMOTE_UUID in result.services():
-                        print("Found Robot Remote Service")
-                        return result.device
-        print("No matching device found.")
-        return None
-
+        while True:
+            print("Scanning for BLE devices...")
+            async with aioble.scan(5000, interval_us=30000, window_us=30000, active=True) as scanner:
+                async for result in scanner:
+                    if result.name() == "KevsRobots":
+                        print("Found KevsRobots")
+                        for item in result.services():
+                            print(item)
+                        if self._REMOTE_UUID in result.services():
+                            print("Found Robot Remote Service")
+                            return result.device
+            print("No matching device found.")
+            return None
+            asyncio.sleep(0.5)
     
     async def main(self):
-        """ Run all tasks concurrently """
-        print('starting tasks')
-        read_commands_task = asyncio.create_task(self.read_commands())
-        peripheral_task = asyncio.create_task(self.peripheral_task())
-        
-        self.tasks.append(peripheral_task)
-        self.tasks.append(read_commands_task)
-        await asyncio.gather(*self.tasks)
+        while True:
+            """ Run all tasks concurrently """
+            
+            print('starting tasks')
+            try:
+                read_commands_task = asyncio.create_task(self.read_commands())
+                peripheral_task = asyncio.create_task(self.peripheral_task())
+                
+                self.tasks.append(peripheral_task)
+                self.tasks.append(read_commands_task)
+                await asyncio.gather(*self.tasks)
+            except Exception as e:
+                print(f"Error in main task: {e}")
+                for task in self.tasks:
+                    task.cancel()
 

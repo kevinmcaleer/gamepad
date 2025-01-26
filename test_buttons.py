@@ -3,7 +3,7 @@
 # Button Test
 
 import asyncio
-from gamepad_remote import GamePad
+from gamepad import GamePad
 
 async def test_gamepad():
     gamepad = GamePad()
