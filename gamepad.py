@@ -276,6 +276,34 @@ class GamePadServer:
     @property
     def is_right(self):
         return self.command == "right_down"
+
+    @property
+    def is_a(self):
+        return self.command == "a_down"
+
+    @property
+    def is_b(self):
+        return self.command == "b_down"
+    
+    @property
+    def is_x(self):
+        return self.command == "x_down"
+    
+    @property
+    def is_y(self):
+        return self.command == "y_down"
+    
+    @property
+    def is_menu(self):
+        return self.command == "menu_down"
+    
+    @property
+    def is_start(self):
+        return self.command == "start_down"
+
+    @property
+    def is_select(self):
+        return self.command == "select_down"
             
     async def find_remote(self):
         print("Scanning for BLE devices...")
