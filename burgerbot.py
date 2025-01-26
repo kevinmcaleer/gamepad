@@ -164,8 +164,8 @@ class Burgerbot:
         Args:
             duration (float): Time in seconds to drive forward.
         """
-        for m in self.motors:
-            m.speed(self.speed)
+        self.motors[0].speed(self.speed)
+        self.motors[1].speed(-self.speed)
         sleep(duration)
 
     def backward(self, duration: float = 0.5):
@@ -175,8 +175,9 @@ class Burgerbot:
         Args:
             duration (float): Time in seconds to drive backward.
         """
-        for m in self.motors:
-            m.speed(-self.speed)
+        self.motors[0].speed(-self.speed)
+        self.motors[1].speed(self.speed)
+      
         sleep(duration)
 
     def turn_left(self, duration: float = 0.5):
@@ -187,7 +188,7 @@ class Burgerbot:
             duration (float): Time in seconds to turn left.
         """
         self.motors[0].speed(self.speed)
-        self.motors[1].speed(-self.speed)
+        self.motors[1].speed(self.speed)
         sleep(duration)
 
     def turn_right(self, duration: float = 0.5):
@@ -198,7 +199,7 @@ class Burgerbot:
             duration (float): Time in seconds to turn right.
         """
         self.motors[0].speed(-self.speed)
-        self.motors[1].speed(self.speed)
+        self.motors[1].speed(-self.speed)
         sleep(duration)
 
     def stop(self):

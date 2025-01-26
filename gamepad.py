@@ -7,6 +7,19 @@ from time import ticks_ms, ticks_diff
 from ssd1306 import SSD1306_I2C
 from machine import I2C
 
+# Pinouts
+A_BUTTON = 6
+B_BUTTON = 7
+X_BUTTON = 4
+Y_BUTTON = 5
+UP_BUTTON = 8
+DOWN_BUTTON = 9
+LEFT_BUTTON = 2
+RIGHT_BUTTON = 3
+START_BUTTON = 12
+SELECT_BUTTON = 11
+MENU_BUTTON = 10
+
 class Button:
     def __init__(self, pin: int, debounce_ms: int = 50):
         self.pin = machine.Pin(pin, machine.Pin.IN, machine.Pin.PULL_UP)
@@ -34,7 +47,9 @@ class Button:
         return False, False
 
 class GamePad:
+    
     def __init__(self):
+        """ Initialise the GamePad """
         self.buttons = {
             "A": Button(6),
             "B": Button(7),
